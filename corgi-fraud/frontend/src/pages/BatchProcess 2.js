@@ -10,6 +10,7 @@ const BatchProcess = () => {
   const [taskId, setTaskId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [downloadUrl, setDownloadUrl] = useState(null);
 
   // Use WebSocket hook for real-time updates
   const {
@@ -19,10 +20,7 @@ const BatchProcess = () => {
     connectionStatus,
     logs,
     isConnected,
-    error: wsError,
-    manualReconnect,
-    reconnectAttempts,
-    maxReconnectAttempts
+    error: wsError
   } = useWebSocket(taskId);
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -46,6 +44,7 @@ const BatchProcess = () => {
 
     setLoading(true);
     setError(null);
+    setDownloadUrl(null);
 
     const formData = new FormData();
     formData.append('file', uploadedFile);
@@ -88,6 +87,54 @@ const BatchProcess = () => {
     }
   };
 
+  const resetForm = () => {
+    setUploadedFile(null);
+    setTaskId(null);
+    setError(null);
+    setDownloadUrl(null);
+    setLoading(false);
+  };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pollTaskStatus = async (id) => {
+    try {
+      const response = await axios.get(`/api/batch-status/${id}`);
+      setTaskStatus(response.data);
+
+      if (response.data.status === 'processing') {
+        setTimeout(() => pollTaskStatus(id), 3000);
+      } else {
+        setPolling(false);
+      }
+    } catch (error) {
+      setError('Failed to check task status');
+      setPolling(false);
+    }
+  };
+
+  const downloadResults = async () => {
+    if (!taskId) return;
+
+    try {
+      const response = await axios.get(`/api/download-results/${taskId}`, {
+        responseType: 'blob',
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `fraud_analysis_results_${taskId}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      setError('Failed to download results');
+    }
+  };
+
   const downloadTemplate = async () => {
     try {
       const response = await axios.get('/api/generate-template', {
@@ -101,7 +148,6 @@ const BatchProcess = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(url);
     } catch (error) {
       setError('Failed to download template');
     }
@@ -120,33 +166,59 @@ const BatchProcess = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(url);
     } catch (error) {
       setError('Failed to download sample data');
     }
   };
 
-  const resetForm = () => {
+  const resetUpload = () => {
     setUploadedFile(null);
     setTaskId(null);
+    setTaskStatus(null);
     setError(null);
-    setLoading(false);
+    setPolling(false);
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'completed':
+        return 'text-success-600 bg-success-50';
+      case 'failed':
+        return 'text-danger-600 bg-danger-50';
+      case 'processing':
+        return 'text-warning-600 bg-warning-50';
+      default:
+        return 'text-gray-600 bg-gray-50';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'completed':
+        return CheckCircleIcon;
+      case 'failed':
+        return ExclamationTriangleIcon;
+      case 'processing':
+        return DocumentTextIcon;
+      default:
+        return DocumentTextIcon;
+    }
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
       <div className="px-4 py-6 sm:px-0">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-extrabold text-gray-900">
             Batch Processing
           </h1>
           <p className="mt-3 max-w-2xl mx-auto text-xl text-gray-500">
-            Upload an Excel file with multiple claims for bulk fraud analysis with real-time updates
+            Upload an Excel file with multiple claims for bulk fraud analysis
           </p>
         </div>
 
         {/* Download Options */}
-        <div className="bg-white shadow-lg rounded-lg mb-8">
+        <div className="bg-white shadow-lg rounded-lg card-shadow mb-8">
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">Getting Started</h3>
           </div>
@@ -157,14 +229,14 @@ const BatchProcess = () => {
             <div className="flex flex-wrap gap-4">
               <button
                 onClick={downloadTemplate}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
               >
                 <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
                 Download Template
               </button>
               <button
                 onClick={downloadSampleData}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
               >
                 <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
                 Download Sample Data
@@ -175,7 +247,7 @@ const BatchProcess = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Upload Section */}
-          <div className="bg-white shadow-lg rounded-lg">
+          <div className="bg-white shadow-lg rounded-lg card-shadow">
             <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-lg font-medium text-gray-900">Upload Claims File</h3>
             </div>
@@ -185,7 +257,7 @@ const BatchProcess = () => {
                   {...getRootProps()}
                   className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
                     isDragActive
-                      ? 'border-blue-500 bg-blue-50'
+                      ? 'border-primary-500 bg-primary-50'
                       : 'border-gray-300 hover:border-gray-400'
                   }`}
                 >
@@ -204,7 +276,7 @@ const BatchProcess = () => {
                 <div className="border rounded-lg p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
-                      <DocumentTextIcon className="h-8 w-8 text-blue-600" />
+                      <DocumentTextIcon className="h-8 w-8 text-primary-600" />
                       <div className="ml-3">
                         <p className="text-sm font-medium text-gray-900">{uploadedFile.name}</p>
                         <p className="text-sm text-gray-500">
@@ -213,8 +285,8 @@ const BatchProcess = () => {
                       </div>
                     </div>
                     <button
-                      onClick={resetForm}
-                      className="text-gray-400 hover:text-gray-600 text-xl"
+                      onClick={resetUpload}
+                      className="text-gray-400 hover:text-gray-600"
                     >
                       ×
                     </button>
@@ -222,22 +294,22 @@ const BatchProcess = () => {
                   <div className="mt-4 flex space-x-3">
                     <button
                       onClick={handleUpload}
-                      disabled={loading || taskId}
-                      className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      disabled={loading}
+                      className="flex-1 bg-primary-600 text-white py-2 px-4 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                     >
-                      {loading ? 'Uploading...' : taskId ? 'Processing...' : 'Start Processing'}
+                      {loading ? 'Uploading...' : 'Start Processing'}
                     </button>
                   </div>
                 </div>
               )}
 
-              {(error || wsError) && (
-                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+              {error && (
+                <div className="mt-4 bg-danger-50 border border-danger-200 rounded-lg p-4">
                   <div className="flex">
-                    <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+                    <ExclamationTriangleIcon className="h-5 w-5 text-danger-400" />
                     <div className="ml-3">
-                      <h3 className="text-sm font-medium text-red-800">Error</h3>
-                      <div className="mt-2 text-sm text-red-700">{error || wsError}</div>
+                      <h3 className="text-sm font-medium text-danger-800">Error</h3>
+                      <div className="mt-2 text-sm text-danger-700">{error}</div>
                     </div>
                   </div>
                 </div>
@@ -245,95 +317,99 @@ const BatchProcess = () => {
             </div>
           </div>
 
-          {/* Real-time Progress Section */}
-          <div className="bg-white shadow-lg rounded-lg">
+          {/* Status Section */}
+          <div className="bg-white shadow-lg rounded-lg card-shadow">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Real-time Processing Status</h3>
+              <h3 className="text-lg font-medium text-gray-900">Processing Status</h3>
             </div>
             <div className="px-6 py-4">
-              {!taskId ? (
+              {!taskStatus ? (
                 <div className="text-center py-8">
                   <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
                   <p className="mt-2 text-sm text-gray-500">
-                    Upload a file to start real-time processing
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    You'll see live updates here once processing begins
+                    Upload a file to start processing
                   </p>
                 </div>
               ) : (
-                <ProgressDisplay
-                  progress={progress}
-                  status={status}
-                  currentStep={currentStep}
-                  connectionStatus={connectionStatus}
-                  logs={logs}
-                  isConnected={isConnected}
-                  error={wsError}
-                  manualReconnect={manualReconnect}
-                  reconnectAttempts={reconnectAttempts}
-                  maxReconnectAttempts={maxReconnectAttempts}
-                />
+                <div className="space-y-4">
+                  <div className="flex items-center">
+                    {React.createElement(getStatusIcon(taskStatus.status), {
+                      className: `h-6 w-6 ${getStatusColor(taskStatus.status).split(' ')[0]}`
+                    })}
+                    <div className="ml-3">
+                      <div className={`inline-flex px-2 py-1 rounded-full text-sm font-medium ${getStatusColor(taskStatus.status)}`}>
+                        {taskStatus.status.toUpperCase()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {taskStatus.status === 'processing' && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Processing claims...</span>
+                        <span>{taskStatus.progress || 0}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${taskStatus.progress || 0}%` }}
+                        ></div>
+                      </div>
+                      {polling && (
+                        <div className="flex items-center text-sm text-gray-500">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600 mr-2"></div>
+                          Refreshing status...
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {taskStatus.status === 'completed' && (
+                    <div className="space-y-3">
+                      <div className="text-sm text-gray-600">
+                        Processing completed at {new Date(taskStatus.completed_at).toLocaleString()}
+                      </div>
+                      <button
+                        onClick={downloadResults}
+                        className="w-full bg-success-600 text-white py-2 px-4 rounded-md hover:bg-success-700 focus:outline-none focus:ring-2 focus:ring-success-500"
+                      >
+                        Download Results
+                      </button>
+                    </div>
+                  )}
+
+                  {taskStatus.status === 'failed' && (
+                    <div className="bg-danger-50 border border-danger-200 rounded-lg p-4">
+                      <div className="text-sm text-danger-800">
+                        Processing failed: {taskStatus.error}
+                      </div>
+                      <div className="text-xs text-danger-600 mt-1">
+                        Failed at {new Date(taskStatus.completed_at).toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-xs text-gray-500">
+                    Task ID: {taskId}
+                  </div>
+                </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Download Results */}
-        {status === 'completed' && (
-          <div className="mt-8 bg-green-50 border border-green-200 rounded-lg p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <CheckCircleIcon className="h-6 w-6 text-green-500" />
-                <div className="ml-3">
-                  <h3 className="text-lg font-medium text-green-900">Processing Complete!</h3>
-                  <p className="text-sm text-green-700">Your fraud analysis results are ready for download.</p>
-                </div>
-              </div>
-              <button
-                onClick={handleDownload}
-                className="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
-              >
-                <ArrowDownTrayIcon className="h-5 w-5 inline mr-2" />
-                Download Results
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Instructions */}
         <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="text-lg font-medium text-blue-900 mb-3">How It Works</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-medium text-blue-800 mb-2">File Requirements:</h4>
-              <ul className="text-sm text-blue-700 space-y-1">
-                <li>• Excel format (.xlsx or .xls)</li>
-                <li>• Required: ClaimID, Claimant, ClaimText</li>
-                <li>• Optional: DateOfIncident, ClaimAmount, PolicyNumber, etc.</li>
-                <li>• Use the template above for correct format</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-medium text-blue-800 mb-2">Real-time Features:</h4>
-              <ul className="text-sm text-blue-700 space-y-1">
-                <li>• Live progress updates via WebSocket</li>
-                <li>• Step-by-step processing logs</li>
-                <li>• Automatic reconnection if connection drops</li>
-                <li>• Multi-agent AI fraud detection</li>
-              </ul>
-            </div>
-          </div>
+          <h3 className="text-lg font-medium text-blue-900 mb-3">Instructions</h3>
+          <ul className="text-sm text-blue-800 space-y-2">
+            <li>• Upload an Excel file (.xlsx or .xls) with claim data</li>
+            <li>• Required columns: ClaimID, Claimant, ClaimText</li>
+            <li>• Optional columns: DateOfIncident, ClaimAmount, PolicyNumber, ContactEmail, etc.</li>
+            <li>• The system will analyze each claim using multiple AI agents</li>
+            <li>• Results will be available for download once processing is complete</li>
+            <li>• Download the template above to see the exact format required</li>
+          </ul>
         </div>
-
-        {/* Task ID Display */}
-        {taskId && (
-          <div className="mt-4 text-center">
-            <p className="text-xs text-gray-500">
-              Task ID: <code className="bg-gray-100 px-2 py-1 rounded">{taskId}</code>
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );

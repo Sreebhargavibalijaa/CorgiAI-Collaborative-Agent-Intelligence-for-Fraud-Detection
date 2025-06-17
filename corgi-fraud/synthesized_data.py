@@ -663,4 +663,5 @@ def generate_complex_claims(file_path: str, num_claims: int = 50):
     return df
 
 # Generate the enhanced claims file with agent analysis capabilities
-claims_data = generate_complex_claims("advanced_fraud_claims_with_agents.xlsx", num_claims=2)
+if __name__ == "__main__":
+    claims_data = generate_complex_claims("advanced_fraud_claims_with_agents.xlsx", num_claims=2)

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { DocumentTextIcon, ExclamationTriangleIcon, CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
+import React, { useState, useCallback } from 'react';
+import { DocumentTextIcon, ExclamationTriangleIcon, CheckCircleIcon, ClockIcon, DocumentArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 
 const SingleClaim = () => {
@@ -15,6 +16,8 @@ const SingleClaim = () => {
     location: '',
     transaction_hashes: ''
   });
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -27,8 +30,81 @@ const SingleClaim = () => {
     }));
   };
 
+  const onDrop = useCallback(async (acceptedFiles) => {
+    if (acceptedFiles.length === 0) return;
+    
+    setUploadingFiles(true);
+    setError(null);
+    
+    try {
+      const uploadFormData = new FormData();
+      acceptedFiles.forEach(file => {
+        uploadFormData.append('files', file);
+      });
+      
+      const response = await axios.post('/api/upload-documents', uploadFormData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      setUploadedFiles(prev => [...prev, ...response.data.files]);
+      
+      // Update supporting_docs field with uploaded filenames
+      const currentDocs = formData.supporting_docs ? formData.supporting_docs.split(', ') : [];
+      const newDocs = response.data.files.map(f => f.filename);
+      const allDocs = [...currentDocs, ...newDocs].filter(Boolean);
+      
+      setFormData(prev => ({
+        ...prev,
+        supporting_docs: allDocs.join(', ')
+      }));
+      
+    } catch (error) {
+      setError('Failed to upload files: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setUploadingFiles(false);
+    }
+  }, [formData.supporting_docs]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/pdf': ['.pdf'],
+      'image/*': ['.jpeg', '.jpg', '.png', '.gif'],
+      'application/msword': ['.doc'],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'text/plain': ['.txt']
+    },
+    maxSize: 10 * 1024 * 1024, // 10MB
+  });
+
+  const removeFile = (fileIndex) => {
+    const newFiles = uploadedFiles.filter((_, index) => index !== fileIndex);
+    setUploadedFiles(newFiles);
+    
+    // Update supporting_docs field
+    const docNames = newFiles.map(f => f.filename);
+    setFormData(prev => ({
+      ...prev,
+      supporting_docs: docNames.join(', ')
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Basic form validation
+    if (!formData.claimant.trim()) {
+      setError('Claimant name is required');
+      return;
+    }
+    
+    if (!formData.claim_text.trim()) {
+      setError('Claim description is required');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     setResult(null);
@@ -64,6 +140,7 @@ const SingleClaim = () => {
       location: '',
       transaction_hashes: ''
     });
+    setUploadedFiles([]);
     setResult(null);
     setError(null);
   };
@@ -153,6 +230,9 @@ const SingleClaim = () => {
                     value={formData.claim_amount}
                     onChange={handleChange}
                     step="0.01"
+                    min="0"
+                    max="1000000"
+                    placeholder="0.00"
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
                   />
                 </div>
@@ -166,6 +246,7 @@ const SingleClaim = () => {
                     name="date_of_incident"
                     value={formData.date_of_incident}
                     onChange={handleChange}
+                    max={new Date().toISOString().split('T')[0]}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
                   />
                 </div>
@@ -200,17 +281,85 @@ const SingleClaim = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Supporting Documents
                 </label>
-                <input
-                  type="text"
-                  name="supporting_docs"
-                  value={formData.supporting_docs}
-                  onChange={handleChange}
-                  placeholder="e.g., police_report.pdf, medical_records.pdf"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                />
+                
+                {/* File Upload Drop Zone */}
+                <div
+                  {...getRootProps()}
+                  className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md cursor-pointer transition-colors ${
+                    isDragActive
+                      ? 'border-primary-400 bg-primary-50'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <div className="space-y-1 text-center">
+                    <input {...getInputProps()} />
+                    <DocumentArrowUpIcon className="mx-auto h-12 w-12 text-gray-400" />
+                    <div className="flex text-sm text-gray-600">
+                      <p className="pl-1">
+                        {isDragActive
+                          ? "Drop the files here..."
+                          : "Drag and drop files here, or click to select files"}
+                      </p>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      PDF, DOC, DOCX, TXT, Images up to 10MB
+                    </p>
+                  </div>
+                </div>
+
+                {/* Upload Progress */}
+                {uploadingFiles && (
+                  <div className="mt-2 flex items-center text-sm text-gray-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600 mr-2"></div>
+                    Uploading files...
+                  </div>
+                )}
+
+                {/* Uploaded Files List */}
+                {uploadedFiles.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-sm font-medium text-gray-700">Uploaded Files:</p>
+                    {uploadedFiles.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-md"
+                      >
+                        <div className="flex items-center">
+                          <DocumentTextIcon className="h-5 w-5 text-gray-400 mr-2" />
+                          <span className="text-sm text-gray-900">{file.filename}</span>
+                          <span className="text-xs text-gray-500 ml-2">
+                            ({(file.size / 1024).toFixed(1)} KB)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(index)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Manual Input Fallback */}
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-gray-500">
+                    Or enter document names manually:
+                  </label>
+                  <input
+                    type="text"
+                    name="supporting_docs"
+                    value={formData.supporting_docs}
+                    onChange={handleChange}
+                    placeholder="e.g., police_report.pdf, medical_records.pdf"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+                  />
+                </div>
               </div>
 
               <div>
@@ -280,7 +429,15 @@ const SingleClaim = () => {
               <div className="bg-white shadow-lg rounded-lg card-shadow p-6">
                 <div className="flex items-center justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                  <span className="ml-3 text-gray-600">Analyzing claim...</span>
+                  <div className="ml-3">
+                    <span className="text-gray-600 font-medium">AI Multi-Agent Analysis in Progress...</span>
+                    <div className="text-sm text-gray-500 mt-1">
+                      Our AI agents are analyzing your claim for fraud patterns
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 text-xs text-gray-400 text-center">
+                  This may take 30-60 seconds depending on claim complexity
                 </div>
               </div>
             )}

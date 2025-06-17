@@ -6,15 +6,26 @@ echo "🐕 Starting Corgi Fraud Detection System..."
 
 # Function to check if a port is in use
 check_port() {
-    lsof -i :$1 >/dev/null 2>&1
+    nc -z localhost $1 2>/dev/null
+}
+
+# Function to kill processes on a specific port
+kill_port() {
+    local port=$1
+    local pids=$(lsof -ti :$port 2>/dev/null)
+    if [ ! -z "$pids" ]; then
+        echo "🔄 Killing existing processes on port $port..."
+        echo $pids | xargs kill -9 2>/dev/null || true
+        sleep 2
+    fi
 }
 
 # Function to start backend
 start_backend() {
     echo "🔧 Starting Backend (FastAPI)..."
     cd backend
-    source venv/bin/activate
-    python main.py &
+    # Use the correct virtual environment path (one level up from corgi-fraud)
+    ../../.venv/bin/python main.py &
     BACKEND_PID=$!
     echo "Backend started with PID: $BACKEND_PID"
     cd ..
@@ -30,15 +41,23 @@ start_frontend() {
     cd ..
 }
 
-# Check if ports are available
+# Check if ports are available and kill existing processes if needed
 if check_port 8000; then
-    echo "⚠️  Port 8000 is already in use. Please stop the existing process or use a different port."
-    exit 1
+    echo "⚠️  Port 8000 is already in use. Attempting to free it..."
+    kill_port 8000
+    if check_port 8000; then
+        echo "❌ Could not free port 8000. Please manually stop the process."
+        exit 1
+    fi
 fi
 
 if check_port 3000; then
-    echo "⚠️  Port 3000 is already in use. Please stop the existing process or use a different port."
-    exit 1
+    echo "⚠️  Port 3000 is already in use. Attempting to free it..."
+    kill_port 3000
+    if check_port 3000; then
+        echo "❌ Could not free port 3000. Please manually stop the process."
+        exit 1
+    fi
 fi
 
 # Start services

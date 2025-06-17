@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { ChartBarIcon, ShieldCheckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
@@ -7,11 +7,7 @@ const Analytics = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, []);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     try {
       const response = await axios.get('/api/stats');
       setStats(response.data);
@@ -23,12 +19,15 @@ const Analytics = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
 
   const processAnalyticsData = (data) => {
     // This would normally come from your backend analytics endpoints
     // For demo purposes, we'll generate some sample data based on the stats
-    const recentActivity = data.recent_activity || [];
     
     // Generate agent performance data
     const agentPerformance = Object.keys(data.agent_versions || {}).map(agent => ({
@@ -67,8 +66,6 @@ const Analytics = () => {
       </div>
     );
   }
-
-  const COLORS = ['#22c55e', '#f59e0b', '#ef4444'];
 
   return (
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
