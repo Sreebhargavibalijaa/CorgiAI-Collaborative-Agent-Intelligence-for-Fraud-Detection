@@ -1,4 +1,4 @@
-# Corgi Fraud Detection System
+# CorgiAI: Collaborative Agent Intelligence for Fraud Detection
 
 An advanced AI-powered fraud detection system using multi-agent architecture with FastAPI backend and React frontend.
 
