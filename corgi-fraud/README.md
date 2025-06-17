@@ -2,6 +2,12 @@
 
 An advanced AI-powered fraud detection system using multi-agent architecture with FastAPI backend and React frontend.
 
+## 📚 Documentation
+
+- **[📋 System Overview](./OVERVIEW.md)** - Complete project overview and features
+- **[🏗️ System Design](./SYSTEM_DESIGN.md)** - Technical architecture and design decisions
+- **[✅ Implementation Status](./COMPLETE.md)** - Current implementation status
+
 ## 🚀 Features
 
 - **Multi-Agent AI System**: Uses specialized AI agents for different types of analysis:
