@@ -7,7 +7,7 @@ All issues have been resolved and the entire Corgi Fraud Detection System is now
 ## 🔧 Issues Fixed
 
 ### 1. **Missing Dependencies**
-- ✅ Installed all Python packages: `fastapi`, `uvicorn`, `pandas`, `openpyxl`, `python-dotenv`, `pyautogen`, `faker`, `pydantic`, `aiofiles`
+- ✅ Installed all Python packages: `fastapi`, `uvicorn`, `pandas`, `openpyxl`, `python-dotenv`, `ag2`, `faker`, `pydantic`, `aiofiles`
 - ✅ Installed missing OpenAI package for agent functionality
 - ✅ Frontend dependencies already installed
 
